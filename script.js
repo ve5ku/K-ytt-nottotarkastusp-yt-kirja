@@ -188,7 +188,7 @@
     <div class="checkbox-group"><input id="s12-yes" type="checkbox"><label for="s12-yes">Asennuksiin sisältyy sähkölämmittimiä, joista on laadittu erillinen pöytäkirja (ST 55.05.01).</label></div>
   ${sectionFooter}`;
   const section13 = () => `${sectionHeader(13,'KÄYTETYT MITTALAITTEET')}
-    <textarea id="s13-devices" rows="2" placeholder="Eurotest EASI / MI 3100SE"></textarea>
+    <textarea id="s13-devices" rows="2">Eurotest EASI / MI 3100SE</textarea>
   ${sectionFooter}`;
   const section14 = () => `${sectionHeader(14,'Tarkastuksen tekijä', true)}
     <label>Päivä</label><input id="s14-date" type="date"> <label>Aika</label><input id="s14-time" type="time">
@@ -325,7 +325,44 @@
       const include=(n)=>!!document.querySelector(`#sec-${n} .section-include`)?.checked;
       const pdfBox=(id,label)=>checkboxLine(label,!!el(id)?.checked);
       const labelValue=(label,value)=>{ if(!value) return; checkBreak(); doc.setFont(undefined,'bold'); text(label,M,y); doc.setFont(undefined,'normal'); const wrapped=doc.splitTextToSize(String(value),W-M*2-62); text(wrapped,M+62,y); y+=Math.max(LH, wrapped.length*(LH-1)); };
-      const checkboxLine=(label,checked=true)=>{ checkBreak(); const size=4.5; doc.rect(M, y-size+1.2, size, size); if(checked){ doc.setLineWidth(0.6); doc.line(M+1.0, y-size/2, M+size/2, y-1.5); doc.line(M+size/2, y-1.5, M+size-1.0, y-size+1.5); doc.setLineWidth(0.2);} text(label, M+size+2.2, y); y+=LH; };
+      const BOX_STYLE = 'cross'; // 'tick' | 'cross' | 'fill'
+const checkboxLine=(label,checked=true)=>{
+  checkBreak();
+  const size = 5.2;               // ruudun koko mm
+  const x = M;
+  const top = y - size + 1.6;      // ← SÄÄDÄ TÄSTÄ pystysuuntaista kohdistusta (1.6–2.0)
+
+  // ruutu
+  doc.setLineWidth(0.25);
+  doc.rect(x, top, size, size);
+
+  // merkintä
+  if (checked) {
+    if (BOX_STYLE === 'tick') {
+      // ✓-merkki viivoilla, keskitetty ruutuun
+      const x1 = x + size * 0.18, y1 = top + size * 0.55;
+      const x2 = x + size * 0.42, y2 = top + size * 0.82;
+      const x3 = x + size * 0.86, y3 = top + size * 0.18;
+      doc.setLineWidth(0.4);
+      doc.line(x1, y1, x2, y2);
+      doc.line(x2, y2, x3, y3);
+      doc.setLineWidth(0.25);
+    } else if (BOX_STYLE === 'cross') {
+      // X-merkki
+      doc.setLineWidth(0.4);
+      doc.line(x + 1.0, top + 1.0, x + size - 1.0, top + size - 1.0);
+      doc.line(x + size - 1.0, top + 1.0, x + 1.0, top + size - 1.0);
+      doc.setLineWidth(0.25);
+    } else if (BOX_STYLE === 'fill') {
+      // täplätty/solidi
+      doc.setFillColor(0);
+      doc.rect(x + 1, top + 1, size - 2, size - 2, 'F');
+    }
+  }
+
+  text(label, x + size + 3, y);
+  y += LH;
+};
       const header=(t)=>{ checkBreak(); y+=5; doc.setFont(undefined,'bold'); doc.setFontSize(12); text(t,M,y); doc.setFontSize(10); doc.setFont(undefined,'normal'); y+=6; };
       const drawHeader=()=>{ if(logoUrl){ doc.addImage(logoUrl,'PNG', M, M, 26, 10, '', 'FAST'); } doc.setFontSize(16); doc.setFont(undefined,'bold'); text('Käyttöönottotarkastuspöytäkirja', M+31, M+8); doc.setFontSize(10); doc.setFont(undefined,'normal'); };
       drawHeader();
