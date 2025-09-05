@@ -209,8 +209,8 @@
       if (cb) cb.addEventListener('change', () => {
         if (cb.checked) {
           sec.classList.add('active');
-          // §14: automaattiset esitäytöt
-          if (sec.id === 'sec-14') prefillInspector();
+          // §14: automaattiset esitäytöt + skaalaus allekirjoitukselle
+          if (sec.id === 'sec-14') { prefillInspector(); setTimeout(()=>window.dispatchEvent(new Event('resize')),0); }
         } else sec.classList.remove('active');
       });
     });
@@ -286,13 +286,76 @@
 
   // Allekirjoitus
   function setupSignature(){
-    const canvas = el('sig'); if(!canvas) return; const ctx=canvas.getContext('2d');
-    ctx.strokeStyle='#222'; ctx.lineWidth=2; ctx.lineJoin='round'; ctx.lineCap='round';
-    let drawing=false, prev=null; const pos=(e)=>{const r=canvas.getBoundingClientRect(); const x=(e.touches?e.touches[0].clientX:e.clientX)-r.left; const y=(e.touches?e.touches[0].clientY:e.clientY)-r.top; return {x,y}};
-    const down=(e)=>{drawing=true; prev=pos(e)}; const move=(e)=>{if(!drawing) return; const p=pos(e); ctx.beginPath(); ctx.moveTo(prev.x,prev.y); ctx.lineTo(p.x,p.y); ctx.stroke(); prev=p; e.preventDefault();}; const up=()=>{drawing=false};
-    canvas.addEventListener('mousedown',down); canvas.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
-    canvas.addEventListener('touchstart',down,{passive:false}); canvas.addEventListener('touchmove',move,{passive:false}); window.addEventListener('touchend',up);
-    el('sig-clear')?.addEventListener('click',()=>ctx.clearRect(0,0,canvas.width,canvas.height));
+    const canvas = el('sig'); if(!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    // Estä sivun eleet piirtäessä ilman CSS-muutoksia
+    canvas.style.touchAction = 'none';
+
+    function resizeCanvas(){
+      const rect = canvas.getBoundingClientRect();
+      const ratio = Math.max(window.devicePixelRatio || 1, 1);
+
+      // Jos osio on piilossa (leveys 0), käytä fallback-kokoa
+      const cssW = rect.width  || canvas.offsetWidth  || 600;
+      const cssH = rect.height || canvas.offsetHeight || 160;
+
+      // Nollaa aiempi skaalaus → aseta "sisäinen" koko → skaalaa takaisin
+      ctx.setTransform(1,0,0,1,0,0);
+      canvas.width  = Math.max(1, Math.round(cssW * ratio));
+      canvas.height = Math.max(1, Math.round(cssH * ratio));
+      ctx.setTransform(ratio,0,0,ratio,0,0);
+
+      // Viivan oletus
+      ctx.strokeStyle = '#222';
+      ctx.lineWidth = 2;
+      ctx.lineJoin = 'round';
+      ctx.lineCap  = 'round';
+    }
+
+    function pos(e){
+      const r = canvas.getBoundingClientRect();
+      const cx = (e.touches ? e.touches[0].clientX : e.clientX);
+      const cy = (e.touches ? e.touches[0].clientY : e.clientY);
+      return { x: cx - r.left, y: cy - r.top };
+    }
+
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    window.addEventListener('orientationchange', resizeCanvas);
+
+    let drawing = false, prev = null;
+
+    canvas.addEventListener('pointerdown', (e) => {
+      drawing = true;
+      canvas.setPointerCapture?.(e.pointerId);
+      prev = pos(e);
+      e.preventDefault();
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+      if (!drawing) return;
+      const p = pos(e);
+      ctx.beginPath();
+      ctx.moveTo(prev.x, prev.y);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+      prev = p;
+      e.preventDefault();
+    });
+
+    const stop = (e) => { drawing = false; e && e.preventDefault(); };
+    canvas.addEventListener('pointerup', stop);
+    canvas.addEventListener('pointercancel', stop);
+    canvas.addEventListener('pointerleave', stop);
+
+    // Tyhjennys säilyttäen skaalauksen
+    el('sig-clear')?.addEventListener('click', () => {
+      const t = ctx.getTransform();
+      ctx.setTransform(1,0,0,1,0,0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.setTransform(t);
+    });
   }
 
   // Tyhjennä koko lomake
