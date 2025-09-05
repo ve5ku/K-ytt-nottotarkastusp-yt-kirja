@@ -14,6 +14,28 @@ label{display:block;margin:.35rem 0 .25rem;font-weight:700;font-size:.92rem}
 input[type=text],input[type=tel],input[type=email],input[type=number],input[type=date],input[type=time],textarea{width:100%;padding:.7rem .8rem;border:1px solid #cfd4dc;border-radius:8px;background:#fff}
 textarea{resize:vertical}
 .muted{color:var(--muted);font-size:.92rem}
+/* Checkbox-rivit samalle riville */
+.checkbox-group{
+  display: flex;
+  align-items: center;
+  gap: .6rem;            /* väli ruudun ja tekstin väliin */
+  margin: .35rem 0;
+}
+
+/* Estä globaalit leveys- ja block-tyylit checkboxeilla */
+.checkbox-group input[type="checkbox"]{
+  width: auto;
+  height: 18px;          /* halutessasi isompi rasti */
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.checkbox-group label{
+  display: inline;       /* kumoaa label{display:block} */
+  margin: 0;
+  line-height: 1.3;
+  flex: 1 1 auto;        /* teksti vie lopun rivistä, ja voi rivittyä */
+}
 
 /* Buttons */
 button,.button-like{display:inline-flex;align-items:center;gap:.5rem;border:none;border-radius:8px;background:#3949ab;color:#fff;padding:.65rem .95rem;font-weight:600;cursor:pointer}
