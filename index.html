@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Käyttöönottotarkastuspöytäkirja</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/umd.js"></script>
+  <!-- PDF-kirjastot -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+  <div id="loader" class="loader-overlay" style="display:none;">
+    <div class="loader-spinner"></div>
+    <p id="loader-text">Ladataan...</p>
+  </div>
+
+  <!-- LOMAKE avautuu suoraan -->
+  <form id="poytakirja-form" style="display:block;">
+    <h1>Käyttöönottotarkastuspöytäkirja</h1>
+    <div id="form-content"></div>
+    <div class="form-actions">
+      <button type="button" id="clear-form-btn">Tyhjennä</button>
+      <button type="button" id="generate-pdf">Luo ja lataa PDF</button>
+    </div>
+  </form>
+
+  <!-- Logo DataURL (määrittelee window.companyLogo) -->
+  <script src="logo.js"></script>
+  <!-- Sovellus -->
+  <script src="script.js"></script>
+</body>
+</html>
