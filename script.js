@@ -617,7 +617,7 @@ const checkboxLine=(label,checked=true)=>{
         const IMAGE_GAP = 10;
         const pageWidth = W - M * 2;
         const PDF_IMAGE_DPI = 50;
-        const PDF_IMAGE_QUALITY = 0.5;
+        const PDF_IMAGE_QUALITY = 0.7;
 
         for(let i=0;i<imgsAll.length;i++){
           const it = imgsAll[i];
@@ -784,7 +784,7 @@ const checkboxLine=(label,checked=true)=>{
     const deg = normalizeRotation(rotationDegrees);
     try {
       const outputType = (blob?.type && blob.type.startsWith('image/')) ? blob.type : undefined;
-      const quality = outputType === 'image/jpeg' ? 0.5 : undefined;
+      const quality = outputType === 'image/jpeg' ? 0.7 : undefined;
       return await rotateDataUrl(baseUrl, deg, {
         outputType,
         quality,
@@ -849,11 +849,11 @@ const checkboxLine=(label,checked=true)=>{
     ctx.scale(scale, scale);
     ctx.drawImage(img, -img.width / 2, -img.height / 2);
 
-    const finalQuality = typeof quality === 'number' ? quality : (finalType === 'image/jpeg' ? 0.5 : undefined);
+    const finalQuality = typeof quality === 'number' ? quality : (finalType === 'image/jpeg' ? 0.7 : undefined);
     return canvas.toDataURL(finalType, finalQuality);
   }
 
-  async function createPdfImageDataUrl(source, rotationDegrees, targetWidthPx, targetHeightPx, outputType = 'image/jpeg', quality = 0.5){
+  async function createPdfImageDataUrl(source, rotationDegrees, targetWidthPx, targetHeightPx, outputType = 'image/jpeg', quality = 0.7){
     const baseUrl = typeof source === 'string' ? source : await blobToDataURL(source);
     return rotateDataUrl(baseUrl, rotationDegrees, {
       targetWidthPx,
