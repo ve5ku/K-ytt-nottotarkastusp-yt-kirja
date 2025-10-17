@@ -40,8 +40,8 @@
     const imgs = await listImages();
     for (const f of files) {
       const orientation = await readExifOrientation(f);
-      const initialRotation = normalizeRotation(orientationToDegrees(orientation));
-      imgs.push({ title: '', blob: f, rotation: initialRotation });
+      const autoRotation = normalizeRotation(orientationToDegrees(orientation));
+      imgs.push({ title: '', blob: f, autoRotation, manualRotation: 0 });
     }
     await saveImages(imgs);
     renderPhotoList();
@@ -53,24 +53,43 @@
 
     for (let i = 0; i < imgs.length; i++) {
       const it = imgs[i];
-      let rotationValue = typeof it.rotation === 'number' ? it.rotation : null;
-      if (rotationValue === null) {
-        rotationValue = 0;
-        needsSave = true;
-      }
-      if (typeof it.orientation === 'number') {
-        rotationValue = normalizeRotation(rotationValue + orientationToDegrees(it.orientation));
-        delete it.orientation;
-        needsSave = true;
-      } else {
-        rotationValue = normalizeRotation(rotationValue);
-      }
-      if (rotationValue !== it.rotation) {
-        it.rotation = rotationValue;
+
+      let autoRotation = typeof it.autoRotation === 'number' ? it.autoRotation : null;
+      let manualRotation = typeof it.manualRotation === 'number' ? it.manualRotation : null;
+
+      if (autoRotation === null) {
+        if (typeof it.rotation === 'number') {
+          autoRotation = normalizeRotation(it.rotation);
+          delete it.rotation;
+        } else if (typeof it.orientation === 'number') {
+          autoRotation = normalizeRotation(orientationToDegrees(it.orientation));
+        } else {
+          autoRotation = 0;
+        }
         needsSave = true;
       }
 
-      const totalRotation = rotationValue;
+      if (manualRotation === null) {
+        manualRotation = 0;
+        needsSave = true;
+      }
+
+      if (typeof it.orientation === 'number') {
+        autoRotation = normalizeRotation(autoRotation + orientationToDegrees(it.orientation));
+        delete it.orientation;
+        needsSave = true;
+      }
+
+      autoRotation = normalizeRotation(autoRotation);
+      manualRotation = normalizeRotation(manualRotation);
+
+      if (it.autoRotation !== autoRotation || it.manualRotation !== manualRotation) {
+        it.autoRotation = autoRotation;
+        it.manualRotation = manualRotation;
+        needsSave = true;
+      }
+
+      const totalRotation = normalizeRotation(autoRotation + manualRotation);
       const previewUrl = await createPreviewDataUrl(it.blob, totalRotation);
 
       const row = document.createElement('div');
@@ -103,9 +122,21 @@
         const idx = Number(btn.dataset.i);
         const delta = Number(btn.dataset.dir);
         const arr = await listImages();
-        if (!arr[idx]) return;
-        const current = typeof arr[idx].rotation === 'number' ? arr[idx].rotation : 0;
-        arr[idx].rotation = normalizeRotation(current + delta);
+        const item = arr[idx];
+        if (!item) return;
+
+        let autoRotation = typeof item.autoRotation === 'number' ? item.autoRotation : 0;
+        let manualRotation = typeof item.manualRotation === 'number' ? item.manualRotation : 0;
+
+        autoRotation = normalizeRotation(autoRotation);
+        manualRotation = normalizeRotation(manualRotation);
+
+        const currentTotal = normalizeRotation(autoRotation + manualRotation);
+        const newTotal = normalizeRotation(currentTotal + delta);
+        const newManual = normalizeRotation(newTotal - autoRotation);
+
+        item.autoRotation = autoRotation;
+        item.manualRotation = newManual;
         await saveImages(arr);
         renderPhotoList();
       });
@@ -589,7 +620,14 @@ const checkboxLine=(label,checked=true)=>{
         for(let i=0;i<imgsAll.length;i++){
           const it = imgsAll[i];
           const name = it.title?.trim() || `Kuva ${i+1}`;
-          const totalRotation = normalizeRotation(it.rotation || 0);
+          let autoRotation = typeof it.autoRotation === 'number' ? it.autoRotation : null;
+          let manualRotation = typeof it.manualRotation === 'number' ? it.manualRotation : 0;
+          if (autoRotation === null) {
+            if (typeof it.rotation === 'number') autoRotation = it.rotation;
+            else if (typeof it.orientation === 'number') autoRotation = orientationToDegrees(it.orientation);
+            else autoRotation = 0;
+          }
+          const totalRotation = normalizeRotation(autoRotation + manualRotation);
           const dataUrl = await getOrientedDataUrl(it.blob, totalRotation);
           const imgSize = await getImageSize(dataUrl);
           const pxWidth = imgSize.width || 1;
@@ -742,7 +780,6 @@ const checkboxLine=(label,checked=true)=>{
   async function getOrientedDataUrl(blob, rotationDegrees){
     const baseUrl = await blobToDataURL(blob);
     const deg = normalizeRotation(rotationDegrees);
-    if (!deg) return baseUrl;
     try {
       return await rotateDataUrl(baseUrl, deg, blob?.type);
     } catch {
