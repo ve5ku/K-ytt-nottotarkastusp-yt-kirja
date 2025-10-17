@@ -503,60 +503,58 @@ const checkboxLine=(label,checked=true)=>{
 
       // Liitteet
       const imgsAll = await listImages();
-      if(imgsAll.length){ 
-        header('LIITTEET: VALOKUVAT'); 
-        for(let i=0;i<imgsAll.length;i++){ 
-          const it=imgsAll[i]; 
-          const name=it.title?.trim()||`Kuva ${i+1}`; 
-          
-          // Tarkista tarvitaanko uusi sivu ennen kuvan lisäämistä
-          const minSpaceForImage = 60; // minimikorkeus mm kuvalle + otsikolle
-          if(y + minSpaceForImage > H - M) {
-            doc.addPage(); 
-            y = M + 12; 
+      if(imgsAll.length){
+        header('LIITTEET: VALOKUVAT');
+        const PX_TO_MM = 25.4 / 96;
+        const LABEL_GAP = 6;
+        const IMAGE_GAP = 10;
+        const pageWidth = W - M * 2;
+
+        for(let i=0;i<imgsAll.length;i++){
+          const it = imgsAll[i];
+          const name = it.title?.trim() || `Kuva ${i+1}`;
+          const dataUrl = await blobToDataURL(it.blob);
+          const imgSize = await getImageSize(dataUrl);
+          const pxWidth = imgSize.width || 1;
+          const pxHeight = imgSize.height || 1;
+          const aspect = pxWidth / pxHeight;
+          const naturalWidth = pxWidth * PX_TO_MM;
+          const naturalHeight = pxHeight * PX_TO_MM;
+          const maxWidth = Math.max(1, Math.min(pageWidth, naturalWidth));
+          const maxHeight = Math.max(1, naturalHeight);
+
+          const computeSize = () => {
+            const available = H - M - IMAGE_GAP - (y + LABEL_GAP);
+            const allowedHeight = Math.max(1, Math.min(available, maxHeight));
+            let w = maxWidth;
+            let h = w / aspect;
+            if(!isFinite(h) || h <= 0){
+              h = allowedHeight;
+              w = h * aspect;
+            }
+            if(h > allowedHeight){
+              h = allowedHeight;
+              w = h * aspect;
+            }
+            return { width: w, height: h, available };
+          };
+
+          let { width: drawW, height: drawH, available } = computeSize();
+          if(available <= 0 || drawH <= 0 || y + LABEL_GAP + drawH + IMAGE_GAP > H - M){
+            doc.addPage();
+            y = M + 12;
             drawHeader();
+            ({ width: drawW, height: drawH, available } = computeSize());
           }
-          
-          doc.setFont(undefined,'bold'); 
-          text(`Kuva ${i+1}: ${name}`,M,y); 
-          doc.setFont(undefined,'normal'); 
-          y += 8; // hieman enemmän tilaa otsikon jälkeen
-          
-          const dataUrl = await blobToDataURL(it.blob); 
-          const imgSize = await getImageSize(dataUrl); 
-          
-          // Maksimikokojen laskenta - kuva saa ottaa lähes koko sivun leveyden ja korkeuden
-          const maxW = W - M * 2; // sivun leveys miinus marginaalit
-          const availableH = H - y - M - 10; // käytettävissä oleva korkeus
-          
-          // Lasketaan skaala niin että kuva mahtuu sivulle
-          const scaleW = maxW / imgSize.w;
-          const scaleH = availableH / imgSize.h;
-          const scale = Math.min(scaleW, scaleH, 1); // ei suurenneta alkuperäistä kokoa
-          
-          const drawW = imgSize.w * scale; 
-          const drawH = imgSize.h * scale;
-          
-          // Jos kuva ei mahdu jäljellä olevaan tilaan, tee uusi sivu
-          if(drawH > availableH) {
-            doc.addPage(); 
-            y = M + 12; 
-            drawHeader();
-            
-            // Uudelleenlasketaan tilat uudella sivulla
-            const newAvailableH = H - y - M - 10;
-            const newScaleH = newAvailableH / imgSize.h;
-            const newScale = Math.min(scaleW, newScaleH, 1);
-            const newDrawH = imgSize.h * newScale;
-            const newDrawW = imgSize.w * newScale;
-            
-            doc.addImage(dataUrl,'PNG', M, y, newDrawW, newDrawH); 
-            y += newDrawH + 10;
-          } else {
-            doc.addImage(dataUrl,'PNG', M, y, drawW, drawH); 
-            y += drawH + 10;
-          }
-        } 
+
+          doc.setFont(undefined,'bold');
+          text(`Kuva ${i+1}: ${name}`, M, y);
+          doc.setFont(undefined,'normal');
+          y += LABEL_GAP;
+
+          doc.addImage(dataUrl,'PNG', M, y, drawW, drawH);
+          y += drawH + IMAGE_GAP;
+        }
       }
 
       doc.save('kayttoonottotarkastus.pdf');
@@ -575,19 +573,12 @@ const checkboxLine=(label,checked=true)=>{
   }
 
   function blobToDataURL(blob){ return new Promise((resolve,reject)=>{ const r=new FileReader(); r.onload=()=>resolve(r.result); r.onerror=reject; r.readAsDataURL(blob); }); }
-  function getImageSize(dataUrl){ 
-    return new Promise((resolve)=>{ 
-      const img = new Image(); 
-      img.onload = () => {
-        // Muunnetaan pikselit millimetreiksi (96 DPI olettaen)
-        // 1 tuuma = 25.4 mm, 96 DPI -> 1 pikseli = 25.4/96 = 0.264583 mm
-        const pixelToMM = 25.4 / 96;
-        resolve({ 
-          w: img.width * pixelToMM, 
-          h: img.height * pixelToMM 
-        }); 
-      }; 
-      img.src = dataUrl; 
-    }); 
+  function getImageSize(dataUrl){
+    return new Promise((resolve)=>{
+      const img = new Image();
+      img.onload = () => resolve({ width: img.width, height: img.height });
+      img.onerror = () => resolve({ width: 1, height: 1 });
+      img.src = dataUrl;
+    });
   }
 })();
