@@ -40,7 +40,8 @@
     const imgs = await listImages();
     for (const f of files) {
       const orientation = await readExifOrientation(f);
-      imgs.push({ title: '', blob: f, orientation, rotation: 0 });
+      const initialRotation = normalizeRotation(orientationToDegrees(orientation));
+      imgs.push({ title: '', blob: f, rotation: initialRotation });
     }
     await saveImages(imgs);
     renderPhotoList();
@@ -52,11 +53,24 @@
 
     for (let i = 0; i < imgs.length; i++) {
       const it = imgs[i];
-      if (typeof it.orientation !== 'number') { it.orientation = 1; needsSave = true; }
-      if (typeof it.rotation !== 'number') { it.rotation = 0; needsSave = true; }
+      let rotationValue = typeof it.rotation === 'number' ? it.rotation : null;
+      if (rotationValue === null) {
+        rotationValue = 0;
+        needsSave = true;
+      }
+      if (typeof it.orientation === 'number') {
+        rotationValue = normalizeRotation(rotationValue + orientationToDegrees(it.orientation));
+        delete it.orientation;
+        needsSave = true;
+      } else {
+        rotationValue = normalizeRotation(rotationValue);
+      }
+      if (rotationValue !== it.rotation) {
+        it.rotation = rotationValue;
+        needsSave = true;
+      }
 
-      const baseRotation = orientationToDegrees(it.orientation);
-      const totalRotation = normalizeRotation(baseRotation + (it.rotation || 0));
+      const totalRotation = rotationValue;
       const previewUrl = await createPreviewDataUrl(it.blob, totalRotation);
 
       const row = document.createElement('div');
@@ -575,10 +589,7 @@ const checkboxLine=(label,checked=true)=>{
         for(let i=0;i<imgsAll.length;i++){
           const it = imgsAll[i];
           const name = it.title?.trim() || `Kuva ${i+1}`;
-          const exifOrientation = typeof it.orientation === 'number' ? it.orientation : 1;
-          const manualRotation = typeof it.rotation === 'number' ? it.rotation : 0;
-          const baseRotation = orientationToDegrees(exifOrientation);
-          const totalRotation = normalizeRotation(baseRotation + manualRotation);
+          const totalRotation = normalizeRotation(it.rotation || 0);
           const dataUrl = await getOrientedDataUrl(it.blob, totalRotation);
           const imgSize = await getImageSize(dataUrl);
           const pxWidth = imgSize.width || 1;
@@ -618,7 +629,8 @@ const checkboxLine=(label,checked=true)=>{
           doc.setFont(undefined,'normal');
           y += LABEL_GAP;
 
-          doc.addImage(dataUrl,'PNG', M, y, drawW, drawH);
+          const imgFormat = inferImageFormat(dataUrl);
+          doc.addImage(dataUrl, imgFormat, M, y, drawW, drawH);
           y += drawH + IMAGE_GAP;
         }
       }
@@ -652,13 +664,19 @@ const checkboxLine=(label,checked=true)=>{
             const marker = view.getUint16(offset, false);
             offset += 2;
             if (marker === 0xffe1) {
-              if (view.getUint32(offset + 2, false) !== 0x45786966) break; // "Exif"
-              const little = view.getUint16(offset + 8, false) === 0x4949;
-              let dirOffset = offset + 10 + view.getUint32(offset + 10, little);
-              const entries = view.getUint16(dirOffset, little);
-              dirOffset += 2;
+              const size = view.getUint16(offset, false);
+              offset += 2;
+              if (view.getUint32(offset, false) !== 0x45786966) {
+                offset += size - 2;
+                continue;
+              }
+              offset += 6;
+              const little = view.getUint16(offset, false) === 0x4949;
+              const ifdOffset = view.getUint32(offset + 4, little);
+              offset += ifdOffset + 2;
+              const entries = view.getUint16(offset - 2, little);
               for (let i = 0; i < entries; i++) {
-                const entryOffset = dirOffset + i * 12;
+                const entryOffset = offset + i * 12;
                 if (view.getUint16(entryOffset, little) === 0x0112) {
                   resolve(view.getUint16(entryOffset + 8, little));
                   return;
@@ -754,6 +772,12 @@ const checkboxLine=(label,checked=true)=>{
       img.onerror = reject;
       img.src = dataUrl;
     });
+  }
+
+  function inferImageFormat(dataUrl){
+    if (typeof dataUrl !== 'string') return 'PNG';
+    if (dataUrl.startsWith('data:image/jpeg') || dataUrl.startsWith('data:image/jpg')) return 'JPEG';
+    return 'PNG';
   }
 
   function blobToDataURL(blob){ return new Promise((resolve,reject)=>{ const r=new FileReader(); r.onload=()=>resolve(r.result); r.onerror=reject; r.readAsDataURL(blob); }); }
