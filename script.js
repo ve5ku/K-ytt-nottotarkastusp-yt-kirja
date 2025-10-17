@@ -380,10 +380,12 @@
   async function generatePdf(){
     const loader=el('loader'), loaderText=el('loader-text'); loaderText.textContent='Luodaan PDF…'; loader.style.display='flex';
     try{
-      const { jsPDF } = window.jspdf; const doc=new jsPDF('p','mm','a4');
-      const M=15, W=doc.internal.pageSize.getWidth(), H=doc.internal.pageSize.getHeight(); const LH=7; let y=M+12;
-      const logoUrl = await getLogoDataUrl();
-      const checkBreak=(extra=0)=>{ if(y+extra>H-M){ doc.addPage(); y=M+12; drawHeader(); } };
+  const { jsPDF } = window.jspdf; const doc=new jsPDF('p','mm','a4');
+  const M=15, W=doc.internal.pageSize.getWidth(), H=doc.internal.pageSize.getHeight(); const LH=7; let y=M+12;
+  const logoUrl = await getLogoDataUrl();
+  const SECTION_MIN_SPACE = { 1:90, 2:60, 3:70, 4:70, 5:70, 6:70, 7:55, 8:45, 9:55, 10:55, 11:65, 12:45, 13:40, 14:85 };
+  const ensureSectionStart = (minSpace=50)=>{ if(y+minSpace>H-M){ doc.addPage(); y=M+12; drawHeader(); } };
+  const checkBreak=(extra=0)=>{ if(y+extra>H-M){ doc.addPage(); y=M+12; drawHeader(); } };
       const text=(t,x,yy,opt)=>doc.text(String(t),x,yy,opt);
       const include=(n)=>!!document.querySelector(`#sec-${n} .section-include`)?.checked;
       const pdfBox=(id,label)=>checkboxLine(label,!!el(id)?.checked);
@@ -426,12 +428,30 @@ const checkboxLine=(label,checked=true)=>{
   text(label, x + size + 3, y);
   y += LH;
 };
-      const header=(t)=>{ checkBreak(); y+=5; doc.setFont(undefined,'bold'); doc.setFontSize(12); text(t,M,y); doc.setFontSize(10); doc.setFont(undefined,'normal'); y+=6; };
-      const drawHeader=()=>{ if(logoUrl){ doc.addImage(logoUrl,'PNG', M, M, 26, 10, '', 'FAST'); } doc.setFontSize(16); doc.setFont(undefined,'bold'); text('Käyttöönottotarkastuspöytäkirja', M+31, M+8); doc.setFontSize(10); doc.setFont(undefined,'normal'); };
+      const header=(t,minSpace=50)=>{ ensureSectionStart(minSpace); y+=5; doc.setFont(undefined,'bold'); doc.setFontSize(12); text(t,M,y); doc.setFontSize(10); doc.setFont(undefined,'normal'); y+=6; };
+      const drawHeader=()=>{
+        const LOGO_WIDTH = 32.5;
+        const LOGO_HEIGHT = 12.5;
+        const TITLE_X = M + LOGO_WIDTH + 9;
+        if(logoUrl){ doc.addImage(logoUrl,'PNG', M, M, LOGO_WIDTH, LOGO_HEIGHT, '', 'FAST'); }
+        doc.setFontSize(16); doc.setFont(undefined,'bold'); text('Käyttöönottotarkastuspöytäkirja', TITLE_X, M+8); doc.setFontSize(10); doc.setFont(undefined,'normal');
+      };
+      const applyPageNumbers=()=>{
+        const total = doc.getNumberOfPages();
+        const numberY = Math.max(10, M - 5);
+        doc.setFont(undefined,'normal');
+        doc.setFontSize(9);
+        for(let i=1;i<=total;i++){
+          doc.setPage(i);
+          const currentWidth = doc.internal.pageSize.getWidth();
+          doc.text(`Sivu ${i} / ${total}`, currentWidth - M, numberY, { align: 'right' });
+        }
+        doc.setFontSize(10);
+      };
       drawHeader();
 
       // --- 1 ---
-      header('1. PERUSTIEDOT');
+  header('1. PERUSTIEDOT', SECTION_MIN_SPACE[1]);
       if(!include(1)) checkboxLine('Ei sisälly tarkastukseen'); else {
         doc.setFont(undefined,'bold'); text('1.1 Sähkölaitteiston rakentaja',M,y); doc.setFont(undefined,'normal'); y+=LH;
         labelValue('Sähkölaitteiston rakentaja:','KV Asennus, Y: 2753534-7, Tukes: 219445-001');
@@ -450,61 +470,61 @@ const checkboxLine=(label,checked=true)=>{
       }
 
       // --- 2 ---
-      header('2. AISTINVARAINEN TARKASTUS');
+  header('2. AISTINVARAINEN TARKASTUS', SECTION_MIN_SPACE[2]);
       if(!include(2)) checkboxLine('Ei sisälly tarkastukseen'); else { pdfBox('sec2-na','Ei kuulu tarkastukseen'); pdfBox('sec2-ok','Asennukset on aistinvaraisessa tarkastuksessa todettu vaatimusten mukaisiksi'); if(el('sec2-notes')?.value?.trim()) labelValue('Lisätietoja:', el('sec2-notes').value.trim()); }
 
       // --- 3 ---
-      header('3. SUOJAJOHTIMIEN JATKUVUUS');
+  header('3. SUOJAJOHTIMIEN JATKUVUUS', SECTION_MIN_SPACE[3]);
       if(!include(3)) checkboxLine('Ei sisälly tarkastukseen'); else { pdfBox('s3-all','Todettu kaikista laitteista ja pistorasioista'); pdfBox('s3-ok','Jatkuvuus todettu vaatimusten mukaiseksi'); text('(PE‑, PEN‑, maadoitus‑, pää- ja lisäpotentiaalintasausjohtimet)',M,y); y+=LH; const rows3=[...document.querySelectorAll('#s3-table .table-row:not(.header)')].map(r=>[r.querySelector('[data-col="piste"]').value,r.querySelector('[data-col="r"]').value]).filter(r=>r[0]||r[1]); if(rows3.length){ doc.autoTable({ startY:y, head:[['Mittauspiste','Resistanssi (Ω)']], body:rows3, styles:{fontSize:9}, margin:{left:M,right:M} }); y=doc.lastAutoTable.finalY+2; const nums=rows3.map(r=>parseFloat(String(r[1]).replace(',','.'))).filter(v=>!isNaN(v)); if(nums.length>1) labelValue('Suurin resistanssi:', `${Math.max(...nums).toString().replace('.',',')} Ω`); } }
 
       // --- 4 ---
-      header('4. ERISTYSRESISTANSSI');
+  header('4. ERISTYSRESISTANSSI', SECTION_MIN_SPACE[4]);
       if(!include(4)) checkboxLine('Ei sisälly tarkastukseen'); else { const rows4=[...document.querySelectorAll('#s4-table .table-row:not(.header)')].map(r=>[r.querySelector('[data-col="kohde"]').value,r.querySelector('[data-col="rm"]').value,r.querySelector('[data-col="huom"]').value]).filter(r=>r.some(Boolean)); if(rows4.length){ doc.autoTable({ startY:y, head:[['Kohde','Resistanssi (MΩ)','Huom']], body:rows4, styles:{fontSize:9}, margin:{left:M,right:M} }); y=doc.lastAutoTable.finalY+2; } pdfBox('s4-ok','Eristysresistanssit todettu vaatimusten mukaisiksi'); pdfBox('s4-restore','PE- ja N-johtimien yhdistys on palautettu mittausten jälkeen'); }
 
       // --- 5 ---
-      header('5. SYÖTÖN AUTOMAATTINEN POISKYTKENTÄ');
+  header('5. SYÖTÖN AUTOMAATTINEN POISKYTKENTÄ', SECTION_MIN_SPACE[5]);
       if(!include(5)) checkboxLine('Ei sisälly tarkastukseen'); else { const rows5=[...document.querySelectorAll('#s5-table .table-row:not(.header)')].map(r=>[r.querySelector('[data-col="piste"]').value,r.querySelector('[data-col="ik"]').value,r.querySelector('[data-col="zk"]').value,r.querySelector('[data-col="prot"]').value]).filter(r=>r.some(Boolean)); if(rows5.length){ doc.autoTable({ startY:y, head:[['Piste','Ik (A)','Zk (Ω)','Suojalaite']], body:rows5, styles:{fontSize:9}, margin:{left:M,right:M} }); y=doc.lastAutoTable.finalY+2; } pdfBox('s5-meas','Arvot saatu mittaamalla'); pdfBox('s5-calc','Arvot saatu laskemalla'); pdfBox('s5-std','Arvot ovat standardin mukaiset'); }
 
       // --- 6 ---
-      header('6. VIKAVIRTASUOJAKYTKIN (RCD)');
+  header('6. VIKAVIRTASUOJAKYTKIN (RCD)', SECTION_MIN_SPACE[6]);
       if(!include(6)) checkboxLine('Ei sisälly tarkastukseen'); else { pdfBox('s6-btn','Painiketestaus suoritettu'); const rows6=[...document.querySelectorAll('#s6-table .table-row:not(.header)')].map(r=>[r.querySelector('[data-col="piiri"]').value,r.querySelector('[data-col="idn"]').value,r.querySelector('[data-col="t"]').value,r.querySelector('[data-col="huom"]').value]).filter(r=>r.some(Boolean)); if(rows6.length){ doc.autoTable({ startY:y, head:[['Piiri / sijainti','IΔn (mA)','t (ms)','Huom']], body:rows6, styles:{fontSize:9}, margin:{left:M,right:M} }); y=doc.lastAutoTable.finalY+2; } }
 
       // --- 7 ---
-      header('7. KIERTOSUUNNAN TARKASTUS');
+  header('7. KIERTOSUUNNAN TARKASTUS', SECTION_MIN_SPACE[7]);
       if(!include(7)) checkboxLine('Ei sisälly tarkastukseen'); else { pdfBox('s7-na','Ei sisälly tarkastukseen'); pdfBox('s7-ok','Kiertosuunta tarkastettu ja todettu oikeaksi'); if(el('s7-notes')?.value?.trim()) labelValue('Lisätietoja:', el('s7-notes').value.trim()); }
 
       // --- 8 ---
-      header('8. TOIMINTA- JA KÄYTTÖTESTIT');
+  header('8. TOIMINTA- JA KÄYTTÖTESTIT', SECTION_MIN_SPACE[8]);
       if(!include(8)) checkboxLine('Ei sisälly tarkastukseen'); else { pdfBox('s8-dev','Koneet ja laitteet testattu'); pdfBox('s8-sys','Toiminnalliset kokonaisuudet testattu'); }
 
       // --- 9 ---
-      header('9. JÄNNITTEENALENEMA');
+  header('9. JÄNNITTEENALENEMA', SECTION_MIN_SPACE[9]);
       if(!include(9)) checkboxLine('Ei sisälly tarkastukseen'); else { const norm=(v)=>{ if(!v) return ''; let s=String(v).replace('%','').replace(',','.'); const f=parseFloat(s); if(isNaN(f)) return v; return `${String(f).replace('.',',')} %`;}; const drop=norm(el('s9-drop')?.value); if(drop) labelValue('Suurin jännitteenalenema:', drop); pdfBox('s9-meas','Saatu mittaamalla'); pdfBox('s9-calc','Saatu laskemalla'); }
 
       // --- 10 ---
-      header('10. KÄYTTÖ-, HUOLTO- JA KUNNOSSAPITO-OHJEET');
+  header('10. KÄYTTÖ-, HUOLTO- JA KUNNOSSAPITO-OHJEET', SECTION_MIN_SPACE[10]);
       if(!include(10)) checkboxLine('Ei sisälly tarkastukseen'); else { pdfBox('s10-na','Ei sisälly tarkastukseen'); pdfBox('s10-deliv','Toimitettu tilaajalle'); pdfBox('s10-noneed','Ei erillisiä ohjeita vaativia laitteita tai asennuksia'); }
 
       // --- 11 ---
-      header('11. PALOVAROITTIMET');
+  header('11. PALOVAROITTIMET', SECTION_MIN_SPACE[11]);
       if(!include(11)) checkboxLine('Ei sisälly tarkastukseen'); else { pdfBox('s11-none','Käyttöönotto­tarkastettaviin asennuksiin ei sisälly palovaroittimia.'); pdfBox('s11-req','Vakuutamme, että asennetut palovaroittimet täyttävät vaatimukset.'); pdfBox('s11-man','Käyttö‑ ja huolto‑ohjeet on luovutettu.'); if(el('s11-power')?.value?.trim()) labelValue('Virran ja varavirran syötön toteutus:', el('s11-power').value.trim()); }
 
       // --- 12 ---
-      header('12. ECODESIGN ASETUS');
+  header('12. ECODESIGN ASETUS', SECTION_MIN_SPACE[12]);
       if(!include(12)) checkboxLine('Ei sisälly tarkastukseen'); else { pdfBox('s12-na','Asennuksiin ei sisälly asetuksen piiriin kuuluvia sähkölämmittimiä.'); pdfBox('s12-yes','Asennuksiin sisältyy sähkölämmittimiä, joista on laadittu erillinen pöytäkirja (ST 55.05.01).'); }
 
       // --- 13 ---
-      header('13. KÄYTETYT MITTALAITTEET');
+  header('13. KÄYTETYT MITTALAITTEET', SECTION_MIN_SPACE[13]);
       if(!include(13)) checkboxLine('Ei sisälly tarkastukseen'); else { if(el('s13-devices')?.value?.trim()) labelValue('', el('s13-devices').value.trim()); }
 
       // --- 14 ---
-      header('14. Tarkastuksen tekijä');
+  header('14. Tarkastuksen tekijä', SECTION_MIN_SPACE[14]);
       if(!include(14)) checkboxLine('Ei sisälly tarkastukseen'); else { const d=el('s14-date')?.value, t=el('s14-time')?.value; const ts=(d||t)?`${d||''}${t?(d?' klo ':'')+t:''}`:''; if(ts) labelValue('Päiväys:', ts); labelValue('Nimen selvennys:', el('s14-name')?.value || 'Vesa Kauppinen'); const sig=el('sig'); if(sig){ const data=sig.toDataURL('image/png'); if(!data.endsWith('data:,')){ checkBreak(30); text('Allekirjoitus:', M, y); y+=6; doc.addImage(data,'PNG',M,y,80,25); y+=30; } } }
 
       // Liitteet
       const imgsAll = await listImages();
       if(imgsAll.length){
-        header('LIITTEET: VALOKUVAT');
+        header('LIITTEET: VALOKUVAT', 80);
         const PX_TO_MM = 25.4 / 96;
         const LABEL_GAP = 6;
         const IMAGE_GAP = 10;
@@ -557,7 +577,8 @@ const checkboxLine=(label,checked=true)=>{
         }
       }
 
-      doc.save('kayttoonottotarkastus.pdf');
+  applyPageNumbers();
+  doc.save('kayttoonottotarkastus.pdf');
     } catch(e){ console.error(e); alert('PDF:n luonti epäonnistui'); } finally { el('loader').style.display='none'; }
   }
 
