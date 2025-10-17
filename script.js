@@ -616,7 +616,7 @@ const checkboxLine=(label,checked=true)=>{
         const LABEL_GAP = 6;
         const IMAGE_GAP = 10;
         const pageWidth = W - M * 2;
-        const PDF_IMAGE_DPI = 50;
+        const PDF_IMAGE_DPI = 100;
         const PDF_IMAGE_QUALITY = 0.5;
 
         for(let i=0;i<imgsAll.length;i++){
