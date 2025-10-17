@@ -101,6 +101,7 @@
           <div class="photo-controls">
             <button type="button" class="rotate-btn" data-dir="-90" data-i="${i}" title="Käännä vastapäivään">↺</button>
             <button type="button" class="rotate-btn" data-dir="90" data-i="${i}" title="Käännä myötäpäivään">↻</button>
+            <button type="button" class="remove-photo" data-i="${i}" title="Poista kuva">Poista</button>
           </div>
         </div>`;
       list.appendChild(row);
@@ -142,6 +143,17 @@
       });
     });
 
+    list.querySelectorAll('.remove-photo').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const idx = Number(btn.dataset.i);
+        const arr = await listImages();
+        if (!arr[idx]) return;
+        arr.splice(idx, 1);
+        await saveImages(arr);
+        renderPhotoList();
+      });
+    });
+
     count.textContent = `Liitetty ${imgs.length} kuvaa.`;
   }
 
@@ -175,24 +187,24 @@
     wireSectionToggles();
     wireGps();
     wirePhotos();
+    wireOwnerMirrors();
     wireDynamicRows();
     setupSignature();
+
+    ['sec-1','sec-14'].forEach((id) => {
+      const cb = document.querySelector(`#${id} .section-include`);
+      if (cb && !cb.checked) {
+        cb.checked = true;
+        cb.dispatchEvent(new Event('change'));
+      }
+    });
+
+  prefillInspector(true);
   }
 
   function section1() {
     return `
       ${sectionHeader(1, 'PERUSTIEDOT', true)}
-        <div class="sub-section">
-          <h3>1.1 Sähkölaitteiston rakentaja</h3>
-          <div class="keypairs">
-            <div><label>Nimi</label><div>KV Asennus</div></div>
-            <div><label>Y‑tunnus</label><div>2753534-7</div></div>
-            <div><label>Tukes</label><div>219445-001</div></div>
-            <div><label>Osoite</label><div>Lummekatu 10, 78850 Varkaus</div></div>
-            <div><label>Sähkötöiden johtaja</label><div>Vesa Kauppinen</div></div>
-            <div><label>Puhelin</label><div>040 763 5648</div></div>
-          </div>
-        </div>
         <div class="sub-section">
           <h3>1.2 Kohteen tiedot</h3>
           <button type="button" id="btnGps" class="btn-success">Hae sijainti GPS:llä</button>
@@ -201,15 +213,43 @@
           <label>Katuosoite</label><input id="street">
           <label>Postinumero</label><input id="postalCode">
           <label>Postitoimipaikka</label><input id="city">
-          <label>Kohteen yksilöinti (esim. keskus)</label><input id="locationId" placeholder="Esim. OKT Virtanen, Mittaus- ja ryhmäkeskus">
+          <label>Tarkastuksen peruste</label>
+          <select id="inspectionBasis">
+            <option value="">Valitse</option>
+            <option value="Uudisasennus">Uudisasennus</option>
+            <option value="Muutos- tai laajennustyö">Muutos- tai laajennustyö</option>
+            <option value="Korjaustyö">Korjaustyö</option>
+            <option value="Uusintatarkastus">Uusintatarkastus</option>
+          </select>
+          <label>Kohteen yksilöinti (esim. keskus)</label><textarea id="locationId" rows="2" placeholder="Esim. OKT Virtanen, Mittaus- ja ryhmäkeskus"></textarea>
           <label>Liitä kuvia kohteesta</label>
           <input id="photos" type="file" accept="image/*" multiple>
           <div id="photoList" class="photo-list"></div>
           <div id="photoCount" class="muted">Liitetty 0 kuvaa.</div>
-          <h4 class="muted">Tilaaja</h4>
-          <label>Nimi</label><input id="clientName">
-          <label>Yhteyshenkilö</label><input id="contactName">
-          <label>Puhelin</label><input id="clientPhone">
+         <h4 class="muted">Omistaja</h4>
+         <label>Nimi / yritys</label><input id="ownerName">
+         <label>Puhelin</label><input id="ownerPhone">
+         <label>Sähköposti</label><input id="ownerEmail">
+         <label>Katuosoite</label><input id="ownerStreet">
+         <label>Postinumero</label><input id="ownerPostalCode">
+         <label>Postitoimipaikka</label><input id="ownerCity">
+         <h4 class="muted">Tilaaja</h4>
+         <div class="checkbox-group"><input id="clientSameOwner" type="checkbox"><label for="clientSameOwner">Sama kuin omistaja</label></div>
+         <label>Nimi / yritys</label><input id="clientName">
+         <label>Puhelin</label><input id="clientPhone">
+         <label>Sähköposti</label><input id="clientEmail">
+         <label>Katuosoite</label><input id="clientStreet">
+         <label>Postinumero</label><input id="clientPostalCode">
+         <label>Postitoimipaikka</label><input id="clientCity">
+         <h4 class="muted">Tilaajan yhteyshenkilö</h4>
+         <div class="checkbox-group"><input id="contactSameOwner" type="checkbox"><label for="contactSameOwner">Sama kuin omistaja</label></div>
+         <div class="checkbox-group"><input id="contactSameClient" type="checkbox"><label for="contactSameClient">Sama kuin tilaaja</label></div>
+         <label>Nimi / yritys</label><input id="contactName">
+         <label>Puhelin</label><input id="contactPhone">
+         <label>Sähköposti</label><input id="contactEmail">
+         <label>Katuosoite</label><input id="contactStreet">
+         <label>Postinumero</label><input id="contactPostalCode">
+         <label>Postitoimipaikka</label><input id="contactCity">
         </div>
       ${sectionFooter}
     `;
@@ -220,21 +260,21 @@
     <label>Lisätietoja</label><textarea id="sec2-notes" rows="3" placeholder="Vapaa lisäselvitys..."></textarea>
   ${sectionFooter}`; }
   function section3() { return `${sectionHeader(3,'SUOJAJOHTIMIEN JATKUVUUS')}
+    <p class="muted">(PE‑, PEN‑, maadoitus‑, pää- ja lisäpotentiaalintasausjohtimet)</p>
     <div class="checkbox-group"><input id="s3-all" type="checkbox"><label for="s3-all">Todettu kaikista laitteista ja pistorasioista</label></div>
     <div class="checkbox-group"><input id="s3-ok" type="checkbox"><label for="s3-ok">Jatkuvuus todettu vaatimusten mukaiseksi</label></div>
-    <p class="muted">(PE‑, PEN‑, maadoitus‑, pää- ja lisäpotentiaalintasausjohtimet)</p>
-    <div class="table-like" id="s3-table"><div class="table-row header"><div>Mittauspiste</div><div>Resistanssi (Ω)</div><div></div></div></div>
+  <div class="table-like" id="s3-table"><div class="table-row header"><div>Mittauspiste</div><div>Resistanssi (Ohm)</div><div></div></div></div>
     <button type="button" class="button-like" data-add-row="s3">+ Lisää mittaus</button>
     <div class="muted" id="s3-max"></div>
   ${sectionFooter}`; }
   function section4() { return `${sectionHeader(4,'ERISTYSRESISTANSSI')}
-    <div class="table-like" id="s4-table"><div class="table-row header"><div>Kohde</div><div>Resistanssi (MΩ)</div><div>Huom</div></div></div>
+  <div class="table-like" id="s4-table"><div class="table-row header"><div>Kohde</div><div>Resistanssi (MOhm)</div><div>Huom</div></div></div>
     <button type="button" class="button-like" data-add-row="s4">+ Lisää mittaus</button>
     <div class="checkbox-group"><input id="s4-ok" type="checkbox"><label for="s4-ok">Eristysresistanssit todettu vaatimusten mukaisiksi</label></div>
     <div class="checkbox-group"><input id="s4-restore" type="checkbox"><label for="s4-restore">PE- ja N-johtimien yhdistys on palautettu mittausten jälkeen</label></div>
   ${sectionFooter}`; }
   function section5() { return `${sectionHeader(5,'SYÖTÖN AUTOMAATTINEN POISKYTKENTÄ')}
-    <div class="table-like" id="s5-table"><div class="table-row header"><div>Piste</div><div>Ik (A)</div><div>Zk (Ω)</div><div>Suojalaite</div><div></div></div></div>
+  <div class="table-like" id="s5-table"><div class="table-row header"><div>Piste</div><div>Ik (A)</div><div>Zk (Ohm)</div><div>Suojalaite</div><div></div></div></div>
     <button type="button" class="button-like" data-add-row="s5">+ Lisää mittaus</button>
     <div class="checkbox-group"><input id="s5-meas" type="checkbox"><label for="s5-meas">Arvot saatu mittaamalla</label></div>
     <div class="checkbox-group"><input id="s5-calc" type="checkbox"><label for="s5-calc">Arvot saatu laskemalla</label></div>
@@ -303,15 +343,21 @@
     });
   }
 
-  function prefillInspector(){
-    const name = el('s14-name'); if (name && !name.value) name.value = 'Vesa Kauppinen';
+  function prefillInspector(force = false){
+    const name = el('s14-name'); if (name && (!name.value || force)) name.value = 'Vesa Kauppinen';
     const d = el('s14-date'); const t = el('s14-time');
     const now = new Date();
     const pad = (n)=> String(n).padStart(2,'0');
     const iso = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
     const tim = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-    if (d && !d.value) d.value = iso;
-    if (t && !t.value) t.value = tim;
+    if (d && (force || !d.value)) {
+      d.value = iso;
+      d.defaultValue = iso;
+    }
+    if (t && (force || !t.value)) {
+      t.value = tim;
+      t.defaultValue = tim;
+    }
   }
 
   function wireGps() {
@@ -341,6 +387,112 @@
     renderPhotoList();
   }
 
+  function wireOwnerMirrors() {
+    const ownerFields = {
+      name: el('ownerName'),
+      phone: el('ownerPhone'),
+      email: el('ownerEmail'),
+      street: el('ownerStreet'),
+      postalCode: el('ownerPostalCode'),
+      city: el('ownerCity')
+    };
+    const clientFields = {
+      name: el('clientName'),
+      phone: el('clientPhone'),
+      email: el('clientEmail'),
+      street: el('clientStreet'),
+      postalCode: el('clientPostalCode'),
+      city: el('clientCity')
+    };
+
+    const contactFields = {
+      name: el('contactName'),
+      phone: el('contactPhone'),
+      email: el('contactEmail'),
+      street: el('contactStreet'),
+      postalCode: el('contactPostalCode'),
+      city: el('contactCity')
+    };
+
+    const clientSameOwner = el('clientSameOwner');
+    const contactSameOwner = el('contactSameOwner');
+    const contactSameClient = el('contactSameClient');
+
+    const copyValues = (source, target) => {
+      if (!source || !target) return;
+      Object.keys(target).forEach((key) => {
+        const src = source[key];
+        const dest = target[key];
+        if (!dest) return;
+        dest.value = src?.value || '';
+      });
+    };
+
+    const setDisabledState = (fields, disabled) => {
+      Object.values(fields).forEach((field) => {
+        if (field) field.disabled = !!disabled;
+      });
+    };
+
+    const refreshClient = () => {
+      if (!clientSameOwner) return;
+      if (clientSameOwner.checked) {
+        copyValues(ownerFields, clientFields);
+        setDisabledState(clientFields, true);
+      } else {
+        setDisabledState(clientFields, false);
+      }
+    };
+
+    const refreshContact = () => {
+      if (contactSameOwner?.checked) {
+        if (contactSameClient) contactSameClient.checked = false;
+        copyValues(ownerFields, contactFields);
+        setDisabledState(contactFields, true);
+        return;
+      }
+      if (contactSameClient?.checked) {
+        copyValues(clientFields, contactFields);
+        setDisabledState(contactFields, true);
+        return;
+      }
+      setDisabledState(contactFields, false);
+    };
+
+    clientSameOwner?.addEventListener('change', () => {
+      refreshClient();
+      refreshContact();
+    });
+
+    contactSameOwner?.addEventListener('change', () => {
+      if (contactSameOwner.checked && contactSameClient) contactSameClient.checked = false;
+      refreshContact();
+    });
+
+    contactSameClient?.addEventListener('change', () => {
+      if (contactSameClient.checked && contactSameOwner) contactSameOwner.checked = false;
+      refreshContact();
+    });
+
+    Object.values(ownerFields).forEach((input) => {
+      if (!input) return;
+      input.addEventListener('input', () => {
+        if (clientSameOwner?.checked) refreshClient();
+        if (contactSameOwner?.checked) refreshContact();
+      });
+    });
+
+    Object.values(clientFields).forEach((input) => {
+      if (!input) return;
+      input.addEventListener('input', () => {
+        if (contactSameClient?.checked) refreshContact();
+      });
+    });
+
+    refreshClient();
+    refreshContact();
+  }
+
   function wireDynamicRows() {
     document.querySelectorAll('[data-add-row]')?.forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -365,7 +517,7 @@
   }
   function updateS3Max(){
     const vals = [...document.querySelectorAll('#s3-table [data-col="r"]')].map(i=>parseFloat(String(i.value).replace(',','.'))).filter(v=>!isNaN(v));
-    el('s3-max').textContent = vals.length>1 ? `Suurin resistanssi: ${Math.max(...vals).toString().replace('.',',')} Ω` : '';
+    el('s3-max').textContent = vals.length>1 ? `Suurin resistanssi: ${Math.max(...vals).toString().replace('.',',')} Ohm` : '';
   }
   function addRowS4(){ const host=el('s4-table'); const row=document.createElement('div'); row.className='table-row'; row.innerHTML=`<div><input data-col="kohde" placeholder="Uusi asennus"></div><div><input data-col="rm" type="text" placeholder=">999"></div><div><input data-col="huom" placeholder="Huom"></div>`; host.appendChild(row); }
   function addRowS5(){ const host=el('s5-table'); const row=document.createElement('div'); row.className='table-row'; row.innerHTML=`<div><input data-col="piste" placeholder="2 pistorasiaa"></div><div><input data-col="ik" type="text" placeholder="500"></div><div><input data-col="zk" type="text" placeholder="0,5"></div><div><input data-col="prot" placeholder="C10 johdon suoja"></div><div><button type="button" class="button-like" data-del>×</button></div>`; host.appendChild(row); row.querySelector('[data-del]').addEventListener('click',()=>row.remove()); }
@@ -453,9 +605,9 @@
       if (n.type==='checkbox') n.checked=false; else n.value='';
     });
     // Taulukot takaisin pelkkiin otsikkoriveihin
-    el('s3-table').innerHTML = '<div class="table-row header"><div>Mittauspiste</div><div>Resistanssi (Ω)</div><div></div></div>';
-    el('s4-table').innerHTML = '<div class="table-row header"><div>Kohde</div><div>Resistanssi (MΩ)</div><div>Huom</div></div>';
-    el('s5-table').innerHTML = '<div class="table-row header"><div>Piste</div><div>Ik (A)</div><div>Zk (Ω)</div><div>Suojalaite</div><div></div></div>';
+  el('s3-table').innerHTML = '<div class="table-row header"><div>Mittauspiste</div><div>Resistanssi (Ohm)</div><div></div></div>';
+  el('s4-table').innerHTML = '<div class="table-row header"><div>Kohde</div><div>Resistanssi (MOhm)</div><div>Huom</div></div>';
+  el('s5-table').innerHTML = '<div class="table-row header"><div>Piste</div><div>Ik (A)</div><div>Zk (Ohm)</div><div>Suojalaite</div><div></div></div>';
     el('s6-table').innerHTML = '<div class="table-row header"><div>Piiri / sijainti</div><div>IΔn (mA)</div><div>t (ms)</div><div>Huom</div><div></div></div>';
     // Kuvapuskuri pois
     await idbKeyval.del(IMG_KEY()); renderPhotoList();
@@ -476,7 +628,52 @@
       const text=(t,x,yy,opt)=>doc.text(String(t),x,yy,opt);
       const include=(n)=>!!document.querySelector(`#sec-${n} .section-include`)?.checked;
       const pdfBox=(id,label)=>checkboxLine(label,!!el(id)?.checked);
-      const labelValue=(label,value)=>{ if(!value) return; checkBreak(); doc.setFont(undefined,'bold'); text(label,M,y); doc.setFont(undefined,'normal'); const wrapped=doc.splitTextToSize(String(value),W-M*2-62); text(wrapped,M+62,y); y+=Math.max(LH, wrapped.length*(LH-1)); };
+      const labelValue=(label,value)=>{
+        if(value === undefined || value === null) return;
+        const rawLines = Array.isArray(value)
+          ? value.filter((line) => !!line && String(line).trim())
+          : String(value).split(/\r?\n+/).filter((line) => line.trim().length);
+        if(!rawLines.length) return;
+        checkBreak();
+        doc.setFont(undefined,'bold');
+        text(label,M,y);
+        doc.setFont(undefined,'normal');
+    const contentWidth = W - M * 2 - 62;
+  const normalized = rawLines.map((line) => String(line).replace(/[ΩΩ]/g, 'Ohm'));
+    const lines = normalized.flatMap((line) => doc.splitTextToSize(line, contentWidth));
+        doc.text(lines, M + 62, y);
+        const lineHeight = doc.getLineHeightFactor() * doc.internal.getFontSize() / doc.internal.scaleFactor;
+        const blockHeight = Math.max(LH, lineHeight * Math.max(lines.length, 1));
+        y += blockHeight;
+      };
+      const selectText=(id)=>{
+        const selectEl = el(id);
+        if (!selectEl) return '';
+        const opt = selectEl.options?.[selectEl.selectedIndex];
+        return opt?.text?.trim() || '';
+      };
+      const getContactInfo = (prefix) => ({
+        name: el(`${prefix}Name`)?.value?.trim() || '',
+        phone: el(`${prefix}Phone`)?.value?.trim() || '',
+        email: el(`${prefix}Email`)?.value?.trim() || '',
+        street: el(`${prefix}Street`)?.value?.trim() || '',
+        postalCode: el(`${prefix}PostalCode`)?.value?.trim() || '',
+        city: el(`${prefix}City`)?.value?.trim() || ''
+      });
+      const formatContactDetails = (info) => {
+        if (!info) return { summary: '', address: '' };
+        const summaryParts = [];
+        if (info.name) summaryParts.push(`Nimi/Yritys: ${info.name}`);
+        if (info.phone) summaryParts.push(`Puhelin: ${info.phone}`);
+        if (info.email) summaryParts.push(`Sähköposti: ${info.email}`);
+  const summary = summaryParts.join(' ').trim();
+        const addressParts = [];
+        if (info.street) addressParts.push(info.street);
+        const cityLine = [info.postalCode, info.city].filter(Boolean).join(' ').trim();
+        if (cityLine) addressParts.push(cityLine);
+        const address = addressParts.join(', ').trim();
+        return { summary, address };
+      };
       const BOX_STYLE = 'cross'; // 'tick' | 'cross' | 'fill'
 const checkboxLine=(label,checked=true)=>{
   checkBreak();
@@ -517,11 +714,21 @@ const checkboxLine=(label,checked=true)=>{
 };
       const header=(t,minSpace=50)=>{ ensureSectionStart(minSpace); y+=5; doc.setFont(undefined,'bold'); doc.setFontSize(12); text(t,M,y); doc.setFontSize(10); doc.setFont(undefined,'normal'); y+=6; };
       const drawHeader=()=>{
-        const LOGO_WIDTH = 32.5;
-        const LOGO_HEIGHT = 12.5;
-        const TITLE_X = M + LOGO_WIDTH + 9;
-        if(logoUrl){ doc.addImage(logoUrl,'PNG', M, M, LOGO_WIDTH, LOGO_HEIGHT, '', 'FAST'); }
-        doc.setFontSize(16); doc.setFont(undefined,'bold'); text('Käyttöönottotarkastuspöytäkirja', TITLE_X, M+8); doc.setFontSize(10); doc.setFont(undefined,'normal');
+    const LOGO_WIDTH = 58.5;   // aiempaa ~1.8x leveämpi
+    const LOGO_HEIGHT = 22.5;  // aiempaa ~1.8x korkeampi
+    const TITLE_X = M + LOGO_WIDTH + 9;
+    const TITLE_Y_PRIMARY = M + LOGO_HEIGHT * 0.55; // sijoitetaan teksti logon vertikaalikeskelle
+    const TITLE_Y_SECONDARY = TITLE_Y_PRIMARY + 6;
+    if(logoUrl){ doc.addImage(logoUrl,'PNG', M, M, LOGO_WIDTH, LOGO_HEIGHT, '', 'FAST'); }
+    doc.setFontSize(16);
+    doc.setFont(undefined,'bold');
+    text('TARKASTUSPÖYTÄKIRJA', TITLE_X, TITLE_Y_PRIMARY);
+    doc.setFontSize(11);
+    doc.setFont(undefined,'normal');
+    text('Sähköasennuksen käyttöönotto', TITLE_X, TITLE_Y_SECONDARY);
+    doc.setFontSize(10);
+        const headerBottom = M + LOGO_HEIGHT;
+        if (y < headerBottom + 8) y = headerBottom + 8; // jätetään tilaa logon ja sisällön väliin
       };
       const applyPageNumbers=()=>{
         const total = doc.getNumberOfPages();
@@ -544,15 +751,49 @@ const checkboxLine=(label,checked=true)=>{
         labelValue('Sähkölaitteiston rakentaja:','KV Asennus, Y: 2753534-7, Tukes: 219445-001');
         labelValue('Osoite:','Lummekatu 10, 78850 Varkaus');
         labelValue('Sähkötöiden johtaja:','Vesa Kauppinen');
-        labelValue('Puhelin:','040 763 5648');
+  labelValue('Puhelin:','040 763 5648');
+  labelValue('Sähköposti:','kvasennus@gmail.com');
         y+=2; doc.setFont(undefined,'bold'); text('1.2 Kohteen tiedot',M,y); doc.setFont(undefined,'normal'); y+=LH;
-        labelValue('Kohteen katuosoite:', el('street')?.value);
-        labelValue('Postinumero ja -toimipaikka:', `${el('postalCode')?.value || ''} ${el('city')?.value || ''}`.trim());
+        const siteStreet = el('street')?.value?.trim() || '';
+        const sitePostal = el('postalCode')?.value?.trim() || '';
+        const siteCity = el('city')?.value?.trim() || '';
+        const siteCityLine = [sitePostal, siteCity].filter(Boolean).join(' ').trim();
+        const siteAddress = [siteStreet, siteCityLine].filter(Boolean).join(', ');
+        if (siteAddress) labelValue('Osoite:', siteAddress);
+        labelValue('Tarkastuksen peruste:', selectText('inspectionBasis'));
         labelValue('Kohteen yksilöinti:', el('locationId')?.value);
-        labelValue('Tilaaja:', el('clientName')?.value);
-        labelValue('Yhteyshenkilö:', el('contactName')?.value);
-        labelValue('Puhelin:', el('clientPhone')?.value);
-        const imgs = await listImages(); labelValue('Liitteet:', imgs.length?`${imgs.length} kuvaa`:'Ei liitteitä');
+        const ownerDetails = formatContactDetails(getContactInfo('owner'));
+        if (ownerDetails.summary) labelValue('Omistaja:', ownerDetails.summary);
+        if (ownerDetails.address) labelValue('Osoite:', ownerDetails.address);
+        const clientSameAsOwner = !!el('clientSameOwner')?.checked;
+        if (clientSameAsOwner) {
+          labelValue('Tilaaja:', 'on sama kuin omistaja');
+        } else {
+          const clientDetails = formatContactDetails(getContactInfo('client'));
+          if (clientDetails.summary) labelValue('Tilaaja:', clientDetails.summary);
+          if (clientDetails.address) labelValue('Tilaajan osoite:', clientDetails.address);
+        }
+        const contactSameAsOwner = !!el('contactSameOwner')?.checked;
+        const contactSameAsClient = !!el('contactSameClient')?.checked;
+        if (contactSameAsOwner) {
+          labelValue('Tilaajan yhteyshenkilö:', 'on sama kuin omistaja');
+        } else if (contactSameAsClient) {
+          labelValue('Tilaajan yhteyshenkilö:', 'on sama kuin tilaaja');
+        } else {
+          const contactDetails = formatContactDetails(getContactInfo('contact'));
+          if (contactDetails.summary) labelValue('Tilaajan yhteyshenkilö:', contactDetails.summary);
+          if (contactDetails.address) labelValue('Tilaajan yhteyshenkilön osoite:', contactDetails.address);
+        }
+        const imgs = await listImages();
+        if (imgs.length) {
+          const summary = imgs.map((it, idx) => {
+            const title = it.title?.trim();
+            return `Kuva ${idx + 1}: ${title && title.length ? title : 'Nimetön kuva'}`;
+          }).join(', ');
+          labelValue('Liitteet:', summary);
+        } else {
+          labelValue('Liitteet:', 'Ei liitteitä');
+        }
         if (el('gps-lat')?.value && el('gps-lon')?.value){ const lat=el('gps-lat').value, lon=el('gps-lon').value; labelValue('GPS-koordinaatit:', `${lat}, ${lon}`); labelValue('Karttalinkki:', `https://maps.google.com/?q=${lat},${lon}`); }
       }
 
@@ -562,15 +803,27 @@ const checkboxLine=(label,checked=true)=>{
 
       // --- 3 ---
   header('3. SUOJAJOHTIMIEN JATKUVUUS', SECTION_MIN_SPACE[3]);
-      if(!include(3)) checkboxLine('Ei sisälly tarkastukseen'); else { pdfBox('s3-all','Todettu kaikista laitteista ja pistorasioista'); pdfBox('s3-ok','Jatkuvuus todettu vaatimusten mukaiseksi'); text('(PE‑, PEN‑, maadoitus‑, pää- ja lisäpotentiaalintasausjohtimet)',M,y); y+=LH; const rows3=[...document.querySelectorAll('#s3-table .table-row:not(.header)')].map(r=>[r.querySelector('[data-col="piste"]').value,r.querySelector('[data-col="r"]').value]).filter(r=>r[0]||r[1]); if(rows3.length){ doc.autoTable({ startY:y, head:[['Mittauspiste','Resistanssi (Ω)']], body:rows3, styles:{fontSize:9}, margin:{left:M,right:M} }); y=doc.lastAutoTable.finalY+2; const nums=rows3.map(r=>parseFloat(String(r[1]).replace(',','.'))).filter(v=>!isNaN(v)); if(nums.length>1) labelValue('Suurin resistanssi:', `${Math.max(...nums).toString().replace('.',',')} Ω`); } }
+      if(!include(3)) checkboxLine('Ei sisälly tarkastukseen'); else {
+        text('(PE‑, PEN‑, maadoitus‑, pää- ja lisäpotentiaalintasausjohtimet)',M,y);
+        y+=LH;
+        pdfBox('s3-all','Todettu kaikista laitteista ja pistorasioista');
+        pdfBox('s3-ok','Jatkuvuus todettu vaatimusten mukaiseksi');
+        const rows3=[...document.querySelectorAll('#s3-table .table-row:not(.header)')].map(r=>[r.querySelector('[data-col="piste"]').value,r.querySelector('[data-col="r"]').value]).filter(r=>r[0]||r[1]);
+        if(rows3.length){
+          doc.autoTable({ startY:y, head:[['Mittauspiste','Resistanssi (Ohm)']], body:rows3, styles:{fontSize:9}, margin:{left:M,right:M} });
+          y=doc.lastAutoTable.finalY+2;
+          const nums=rows3.map(r=>parseFloat(String(r[1]).replace(',','.'))).filter(v=>!isNaN(v));
+          if(nums.length>1) labelValue('Suurin resistanssi:', `${Math.max(...nums).toString().replace('.',',')} Ohm`);
+        }
+      }
 
       // --- 4 ---
   header('4. ERISTYSRESISTANSSI', SECTION_MIN_SPACE[4]);
-      if(!include(4)) checkboxLine('Ei sisälly tarkastukseen'); else { const rows4=[...document.querySelectorAll('#s4-table .table-row:not(.header)')].map(r=>[r.querySelector('[data-col="kohde"]').value,r.querySelector('[data-col="rm"]').value,r.querySelector('[data-col="huom"]').value]).filter(r=>r.some(Boolean)); if(rows4.length){ doc.autoTable({ startY:y, head:[['Kohde','Resistanssi (MΩ)','Huom']], body:rows4, styles:{fontSize:9}, margin:{left:M,right:M} }); y=doc.lastAutoTable.finalY+2; } pdfBox('s4-ok','Eristysresistanssit todettu vaatimusten mukaisiksi'); pdfBox('s4-restore','PE- ja N-johtimien yhdistys on palautettu mittausten jälkeen'); }
+      if(!include(4)) checkboxLine('Ei sisälly tarkastukseen'); else { const rows4=[...document.querySelectorAll('#s4-table .table-row:not(.header)')].map(r=>[r.querySelector('[data-col="kohde"]').value,r.querySelector('[data-col="rm"]').value,r.querySelector('[data-col="huom"]').value]).filter(r=>r.some(Boolean)); if(rows4.length){ doc.autoTable({ startY:y, head:[['Kohde','Resistanssi (MOhm)','Huom']], body:rows4, styles:{fontSize:9}, margin:{left:M,right:M} }); y=doc.lastAutoTable.finalY+2; } pdfBox('s4-ok','Eristysresistanssit todettu vaatimusten mukaisiksi'); pdfBox('s4-restore','PE- ja N-johtimien yhdistys on palautettu mittausten jälkeen'); }
 
       // --- 5 ---
   header('5. SYÖTÖN AUTOMAATTINEN POISKYTKENTÄ', SECTION_MIN_SPACE[5]);
-      if(!include(5)) checkboxLine('Ei sisälly tarkastukseen'); else { const rows5=[...document.querySelectorAll('#s5-table .table-row:not(.header)')].map(r=>[r.querySelector('[data-col="piste"]').value,r.querySelector('[data-col="ik"]').value,r.querySelector('[data-col="zk"]').value,r.querySelector('[data-col="prot"]').value]).filter(r=>r.some(Boolean)); if(rows5.length){ doc.autoTable({ startY:y, head:[['Piste','Ik (A)','Zk (Ω)','Suojalaite']], body:rows5, styles:{fontSize:9}, margin:{left:M,right:M} }); y=doc.lastAutoTable.finalY+2; } pdfBox('s5-meas','Arvot saatu mittaamalla'); pdfBox('s5-calc','Arvot saatu laskemalla'); pdfBox('s5-std','Arvot ovat standardin mukaiset'); }
+  if(!include(5)) checkboxLine('Ei sisälly tarkastukseen'); else { const rows5=[...document.querySelectorAll('#s5-table .table-row:not(.header)')].map(r=>[r.querySelector('[data-col="piste"]').value,r.querySelector('[data-col="ik"]').value,r.querySelector('[data-col="zk"]').value,r.querySelector('[data-col="prot"]').value]).filter(r=>r.some(Boolean)); if(rows5.length){ doc.autoTable({ startY:y, head:[['Piste','Ik (A)','Zk (Ohm)','Suojalaite']], body:rows5, styles:{fontSize:9}, margin:{left:M,right:M} }); y=doc.lastAutoTable.finalY+2; } pdfBox('s5-meas','Arvot saatu mittaamalla'); pdfBox('s5-calc','Arvot saatu laskemalla'); pdfBox('s5-std','Arvot ovat standardin mukaiset'); }
 
       // --- 6 ---
   header('6. VIKAVIRTASUOJAKYTKIN (RCD)', SECTION_MIN_SPACE[6]);
@@ -616,8 +869,8 @@ const checkboxLine=(label,checked=true)=>{
         const LABEL_GAP = 6;
         const IMAGE_GAP = 10;
         const pageWidth = W - M * 2;
-        const PDF_IMAGE_DPI = 100;
-        const PDF_IMAGE_QUALITY = 0.5;
+        const PDF_IMAGE_DPI = 190;
+        const PDF_IMAGE_QUALITY = 0.9;
 
         for(let i=0;i<imgsAll.length;i++){
           const it = imgsAll[i];
