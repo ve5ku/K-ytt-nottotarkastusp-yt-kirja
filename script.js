@@ -616,6 +616,8 @@ const checkboxLine=(label,checked=true)=>{
         const LABEL_GAP = 6;
         const IMAGE_GAP = 10;
         const pageWidth = W - M * 2;
+        const PDF_IMAGE_DPI = 150;
+        const PDF_IMAGE_QUALITY = 0.75;
 
         for(let i=0;i<imgsAll.length;i++){
           const it = imgsAll[i];
@@ -627,48 +629,48 @@ const checkboxLine=(label,checked=true)=>{
             else if (typeof it.orientation === 'number') autoRotation = orientationToDegrees(it.orientation);
             else autoRotation = 0;
           }
+          autoRotation = normalizeRotation(autoRotation);
+          manualRotation = normalizeRotation(manualRotation);
           const totalRotation = normalizeRotation(autoRotation + manualRotation);
-          const dataUrl = await getOrientedDataUrl(it.blob, totalRotation);
-          const imgSize = await getImageSize(dataUrl);
-          const pxWidth = imgSize.width || 1;
-          const pxHeight = imgSize.height || 1;
-          const aspect = pxWidth / pxHeight;
-          const naturalWidth = pxWidth * PX_TO_MM;
-          const naturalHeight = pxHeight * PX_TO_MM;
-          const maxWidth = Math.max(1, Math.min(pageWidth, naturalWidth));
-          const maxHeight = Math.max(1, naturalHeight);
+
+          const baseMeta = await getImageDataFromBlob(it.blob);
+          const baseDataUrl = baseMeta.dataUrl;
+          const origWidthPx = baseMeta.width || 1;
+          const origHeightPx = baseMeta.height || 1;
+          const rotationSwaps = totalRotation % 180 !== 0;
+          const orientedWidthPx = rotationSwaps ? origHeightPx : origWidthPx;
+          const orientedHeightPx = rotationSwaps ? origWidthPx : origHeightPx;
+          const naturalWidth = Math.max(orientedWidthPx * PX_TO_MM, 1);
+          const naturalHeight = Math.max(orientedHeightPx * PX_TO_MM, 1);
 
           const computeSize = () => {
             const available = H - M - IMAGE_GAP - (y + LABEL_GAP);
-            const allowedHeight = Math.max(1, Math.min(available, maxHeight));
-            let w = maxWidth;
-            let h = w / aspect;
-            if(!isFinite(h) || h <= 0){
-              h = allowedHeight;
-              w = h * aspect;
-            }
-            if(h > allowedHeight){
-              h = allowedHeight;
-              w = h * aspect;
-            }
-            return { width: w, height: h, available };
+            const allowedHeight = Math.max(1, Math.min(available, naturalHeight));
+            const scale = Math.min(pageWidth / naturalWidth, allowedHeight / naturalHeight, 1);
+            const drawW = naturalWidth * scale;
+            const drawH = naturalHeight * scale;
+            return { drawW, drawH, available };
           };
 
-          let { width: drawW, height: drawH, available } = computeSize();
+          let { drawW, drawH, available } = computeSize();
           if(available <= 0 || drawH <= 0 || y + LABEL_GAP + drawH + IMAGE_GAP > H - M){
             doc.addPage();
             y = M + 12;
             drawHeader();
-            ({ width: drawW, height: drawH, available } = computeSize());
+            ({ drawW, drawH, available } = computeSize());
           }
+
+          const targetWidthPx = Math.min(orientedWidthPx, mmToPx(drawW, PDF_IMAGE_DPI));
+          const targetHeightPx = Math.min(orientedHeightPx, mmToPx(drawH, PDF_IMAGE_DPI));
+          const pdfDataUrl = await createPdfImageDataUrl(baseDataUrl, totalRotation, targetWidthPx, targetHeightPx, 'image/jpeg', PDF_IMAGE_QUALITY);
 
           doc.setFont(undefined,'bold');
           text(`Kuva ${i+1}: ${name}`, M, y);
           doc.setFont(undefined,'normal');
           y += LABEL_GAP;
 
-          const imgFormat = inferImageFormat(dataUrl);
-          doc.addImage(dataUrl, imgFormat, M, y, drawW, drawH);
+          const imgFormat = inferImageFormat(pdfDataUrl);
+          doc.addImage(pdfDataUrl, imgFormat, M, y, drawW, drawH);
           y += drawH + IMAGE_GAP;
         }
       }
@@ -781,25 +783,86 @@ const checkboxLine=(label,checked=true)=>{
     const baseUrl = await blobToDataURL(blob);
     const deg = normalizeRotation(rotationDegrees);
     try {
-      return await rotateDataUrl(baseUrl, deg, blob?.type);
+      const outputType = (blob?.type && blob.type.startsWith('image/')) ? blob.type : undefined;
+      const quality = outputType === 'image/jpeg' ? 0.92 : undefined;
+      return await rotateDataUrl(baseUrl, deg, {
+        outputType,
+        quality,
+        downscaleOnly: false
+      });
     } catch {
       return baseUrl;
     }
   }
 
-  async function rotateDataUrl(dataUrl, rotationDegrees, mimeType){
+  async function rotateDataUrl(dataUrl, rotationDegrees, options = {}){
+    const {
+      targetWidthPx,
+      targetHeightPx,
+      downscaleOnly = true,
+      background = null,
+      outputType,
+      quality
+    } = options || {};
+
     const img = await loadImage(dataUrl);
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
     const rad = rotationDegrees * Math.PI / 180;
-    const isRightAngle = rotationDegrees % 180 !== 0;
-    canvas.width = isRightAngle ? img.height : img.width;
-    canvas.height = isRightAngle ? img.width : img.height;
-    ctx.translate(canvas.width / 2, canvas.height / 2);
+    const rotateRightAngle = rotationDegrees % 180 !== 0;
+    const rawWidth = rotateRightAngle ? img.height : img.width;
+    const rawHeight = rotateRightAngle ? img.width : img.height;
+
+    let scale = 1;
+    if (targetWidthPx || targetHeightPx) {
+      const limitWidth = targetWidthPx || rawWidth;
+      const limitHeight = targetHeightPx || rawHeight;
+      let candidate = Math.min(limitWidth / rawWidth, limitHeight / rawHeight);
+      if (!isFinite(candidate) || candidate <= 0) candidate = 1;
+      scale = downscaleOnly ? Math.min(candidate, 1) : candidate;
+      if (!isFinite(scale) || scale <= 0) scale = 1;
+    }
+
+    const canvasWidth = Math.max(1, Math.round(rawWidth * scale));
+    const canvasHeight = Math.max(1, Math.round(rawHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    const ctx = canvas.getContext('2d');
+
+    let finalType = null;
+    if (outputType && outputType.startsWith('image/')) {
+      finalType = outputType;
+    } else {
+      const match = /^data:(image\/[^;]+);/i.exec(dataUrl);
+      finalType = match ? match[1] : 'image/png';
+    }
+
+  const fillBackground = finalType === 'image/jpeg' ? (background || '#fff') : background;
+    if (fillBackground) {
+      ctx.fillStyle = fillBackground;
+      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+    } else {
+      ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    }
+
+    ctx.translate(canvasWidth / 2, canvasHeight / 2);
     ctx.rotate(rad);
+    ctx.scale(scale, scale);
     ctx.drawImage(img, -img.width / 2, -img.height / 2);
-    const type = (mimeType && mimeType.startsWith('image/')) ? mimeType : 'image/png';
-    return canvas.toDataURL(type);
+
+    const finalQuality = typeof quality === 'number' ? quality : (finalType === 'image/jpeg' ? 0.9 : undefined);
+    return canvas.toDataURL(finalType, finalQuality);
+  }
+
+  async function createPdfImageDataUrl(source, rotationDegrees, targetWidthPx, targetHeightPx, outputType = 'image/jpeg', quality = 0.75){
+    const baseUrl = typeof source === 'string' ? source : await blobToDataURL(source);
+    return rotateDataUrl(baseUrl, rotationDegrees, {
+      targetWidthPx,
+      targetHeightPx,
+      outputType,
+      quality,
+      downscaleOnly: true,
+      background: '#fff'
+    });
   }
 
   function loadImage(dataUrl){
@@ -815,6 +878,23 @@ const checkboxLine=(label,checked=true)=>{
     if (typeof dataUrl !== 'string') return 'PNG';
     if (dataUrl.startsWith('data:image/jpeg') || dataUrl.startsWith('data:image/jpg')) return 'JPEG';
     return 'PNG';
+  }
+
+  function mmToPx(mm, dpi){
+    const safeDpi = dpi || 96;
+    if (!mm || mm <= 0) return 1;
+    return Math.max(1, Math.round((mm / 25.4) * safeDpi));
+  }
+
+  async function getImageDataFromBlob(blob){
+    if (!blob) return { dataUrl: '', width: 1, height: 1 };
+    const dataUrl = await blobToDataURL(blob);
+    const size = await getImageSize(dataUrl);
+    return {
+      dataUrl,
+      width: size.width || 1,
+      height: size.height || 1
+    };
   }
 
   function blobToDataURL(blob){ return new Promise((resolve,reject)=>{ const r=new FileReader(); r.onload=()=>resolve(r.result); r.onerror=reject; r.readAsDataURL(blob); }); }
