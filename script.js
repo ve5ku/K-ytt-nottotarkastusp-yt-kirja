@@ -503,7 +503,61 @@ const checkboxLine=(label,checked=true)=>{
 
       // Liitteet
       const imgsAll = await listImages();
-      if(imgsAll.length){ header('LIITTEET: VALOKUVAT'); for(let i=0;i<imgsAll.length;i++){ const it=imgsAll[i]; const name=it.title?.trim()||`Kuva ${i+1}`; doc.setFont(undefined,'bold'); text(`Kuva ${i+1}: ${name}`,M,y); doc.setFont(undefined,'normal'); y+=6; const dataUrl=await blobToDataURL(it.blob); const imgSize=await getImageSize(dataUrl); const maxW=W-M*2, maxH=H-y-M-6; const scale=Math.min(maxW/imgSize.w, maxH/imgSize.h, 1); const drawW=imgSize.w*scale, drawH=imgSize.h*scale; checkBreak(drawH+6); doc.addImage(dataUrl,'PNG',M,y,drawW,drawH); y+=drawH+6; } }
+      if(imgsAll.length){ 
+        header('LIITTEET: VALOKUVAT'); 
+        for(let i=0;i<imgsAll.length;i++){ 
+          const it=imgsAll[i]; 
+          const name=it.title?.trim()||`Kuva ${i+1}`; 
+          
+          // Tarkista tarvitaanko uusi sivu ennen kuvan lisäämistä
+          const minSpaceForImage = 60; // minimikorkeus mm kuvalle + otsikolle
+          if(y + minSpaceForImage > H - M) {
+            doc.addPage(); 
+            y = M + 12; 
+            drawHeader();
+          }
+          
+          doc.setFont(undefined,'bold'); 
+          text(`Kuva ${i+1}: ${name}`,M,y); 
+          doc.setFont(undefined,'normal'); 
+          y += 8; // hieman enemmän tilaa otsikon jälkeen
+          
+          const dataUrl = await blobToDataURL(it.blob); 
+          const imgSize = await getImageSize(dataUrl); 
+          
+          // Maksimikokojen laskenta - kuva saa ottaa lähes koko sivun leveyden ja korkeuden
+          const maxW = W - M * 2; // sivun leveys miinus marginaalit
+          const availableH = H - y - M - 10; // käytettävissä oleva korkeus
+          
+          // Lasketaan skaala niin että kuva mahtuu sivulle
+          const scaleW = maxW / imgSize.w;
+          const scaleH = availableH / imgSize.h;
+          const scale = Math.min(scaleW, scaleH, 1); // ei suurenneta alkuperäistä kokoa
+          
+          const drawW = imgSize.w * scale; 
+          const drawH = imgSize.h * scale;
+          
+          // Jos kuva ei mahdu jäljellä olevaan tilaan, tee uusi sivu
+          if(drawH > availableH) {
+            doc.addPage(); 
+            y = M + 12; 
+            drawHeader();
+            
+            // Uudelleenlasketaan tilat uudella sivulla
+            const newAvailableH = H - y - M - 10;
+            const newScaleH = newAvailableH / imgSize.h;
+            const newScale = Math.min(scaleW, newScaleH, 1);
+            const newDrawH = imgSize.h * newScale;
+            const newDrawW = imgSize.w * newScale;
+            
+            doc.addImage(dataUrl,'PNG', M, y, newDrawW, newDrawH); 
+            y += newDrawH + 10;
+          } else {
+            doc.addImage(dataUrl,'PNG', M, y, drawW, drawH); 
+            y += drawH + 10;
+          }
+        } 
+      }
 
       doc.save('kayttoonottotarkastus.pdf');
     } catch(e){ console.error(e); alert('PDF:n luonti epäonnistui'); } finally { el('loader').style.display='none'; }
@@ -521,5 +575,19 @@ const checkboxLine=(label,checked=true)=>{
   }
 
   function blobToDataURL(blob){ return new Promise((resolve,reject)=>{ const r=new FileReader(); r.onload=()=>resolve(r.result); r.onerror=reject; r.readAsDataURL(blob); }); }
-  function getImageSize(dataUrl){ return new Promise((resolve)=>{ const img=new Image(); img.onload=()=>resolve({ w: img.width*0.2645833, h: img.height*0.2645833 }); img.src=dataUrl; }); }
+  function getImageSize(dataUrl){ 
+    return new Promise((resolve)=>{ 
+      const img = new Image(); 
+      img.onload = () => {
+        // Muunnetaan pikselit millimetreiksi (96 DPI olettaen)
+        // 1 tuuma = 25.4 mm, 96 DPI -> 1 pikseli = 25.4/96 = 0.264583 mm
+        const pixelToMM = 25.4 / 96;
+        resolve({ 
+          w: img.width * pixelToMM, 
+          h: img.height * pixelToMM 
+        }); 
+      }; 
+      img.src = dataUrl; 
+    }); 
+  }
 })();
