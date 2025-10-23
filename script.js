@@ -190,6 +190,7 @@
     wireOwnerMirrors();
     wireDynamicRows();
     setupSignature();
+    forceFinnishLocale();
 
     ['sec-1','sec-14'].forEach((id) => {
       const cb = document.querySelector(`#${id} .section-include`);
@@ -200,6 +201,16 @@
     });
 
   prefillInspector(true);
+  }
+
+  function forceFinnishLocale(){
+    const root = document.documentElement;
+    if (root && root.lang?.toLowerCase() !== 'fi') root.lang = 'fi';
+    const dateInput = el('s14-date');
+    const timeInput = el('s14-time');
+    dateInput?.setAttribute('lang','fi');
+    timeInput?.setAttribute('lang','fi');
+    timeInput?.setAttribute('step','60');
   }
 
   function section1() {
@@ -628,13 +639,35 @@
       const text=(t,x,yy,opt)=>doc.text(String(t),x,yy,opt);
       const include=(n)=>!!document.querySelector(`#sec-${n} .section-include`)?.checked;
       const pdfBox=(id,label)=>checkboxLine(label,!!el(id)?.checked);
+      const sanitizeAscii=(str)=>{
+        if(!str) return '';
+        return String(str)
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g,'')
+          .replace(/[\\/:*?"<>|]/g,'')
+          .replace(/[^\w\s-]/g,'')
+          .replace(/\s+/g,' ')
+          .trim();
+      };
+      const dateForFilename=(raw)=>{
+        if(!raw) return '';
+        const digits=String(raw).replace(/\D/g,'');
+        if(digits.length>=8) return digits.slice(0,8);
+        return '';
+      };
+      const todayStamp=()=>{
+        const now=new Date();
+        const pad=(n)=>String(n).padStart(2,'0');
+        return `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}`;
+      };
       const labelValue=(label,value)=>{
         if(value === undefined || value === null) return;
         const rawLines = Array.isArray(value)
           ? value.filter((line) => !!line && String(line).trim())
           : String(value).split(/\r?\n+/).filter((line) => line.trim().length);
         if(!rawLines.length) return;
-        checkBreak();
+  const extraSpacing = Array.isArray(value) && value.length > 1 ? (value.length - 1) * (LH * 0.25) : 0;
+  checkBreak(extraSpacing);
         doc.setFont(undefined,'bold');
         text(label,M,y);
         doc.setFont(undefined,'normal');
@@ -642,9 +675,10 @@
   const normalized = rawLines.map((line) => String(line).replace(/[ΩΩ]/g, 'Ohm'));
     const lines = normalized.flatMap((line) => doc.splitTextToSize(line, contentWidth));
         doc.text(lines, M + 62, y);
-        const lineHeight = doc.getLineHeightFactor() * doc.internal.getFontSize() / doc.internal.scaleFactor;
-        const blockHeight = Math.max(LH, lineHeight * Math.max(lines.length, 1));
-        y += blockHeight;
+  const lineHeight = doc.getLineHeightFactor() * doc.internal.getFontSize() / doc.internal.scaleFactor;
+  const lineCount = Math.max(lines.length, 1);
+  const blockHeight = Math.max(LH, lineHeight * lineCount);
+  y += blockHeight + (lineCount > 1 ? 2.5 : 0);
       };
       const selectText=(id)=>{
         const selectEl = el(id);
@@ -661,18 +695,21 @@
         city: el(`${prefix}City`)?.value?.trim() || ''
       });
       const formatContactDetails = (info) => {
-        if (!info) return { summary: '', address: '' };
-        const summaryParts = [];
-        if (info.name) summaryParts.push(`Nimi/Yritys: ${info.name}`);
-        if (info.phone) summaryParts.push(`Puhelin: ${info.phone}`);
-        if (info.email) summaryParts.push(`Sähköposti: ${info.email}`);
-  const summary = summaryParts.join(' ').trim();
-        const addressParts = [];
-        if (info.street) addressParts.push(info.street);
-        const cityLine = [info.postalCode, info.city].filter(Boolean).join(' ').trim();
-        if (cityLine) addressParts.push(cityLine);
-        const address = addressParts.join(', ').trim();
-        return { summary, address };
+        if (!info) return [];
+        const sanitize = (value) => (value && String(value).trim()) || '';
+        const name = sanitize(info.name);
+        const street = sanitize(info.street);
+        const postalCity = [sanitize(info.postalCode), sanitize(info.city)].filter(Boolean).join(' ').trim();
+        const addressParts = [street, postalCity].filter(Boolean);
+        const address = addressParts.join(', ');
+        const firstLineParts = [name, address].filter(Boolean);
+        const lines = [];
+        if (firstLineParts.length) lines.push(firstLineParts.join('  '));
+        const phone = sanitize(info.phone);
+        if (phone) lines.push(phone);
+        const email = sanitize(info.email);
+        if (email) lines.push(email);
+        return lines;
       };
       const BOX_STYLE = 'cross'; // 'tick' | 'cross' | 'fill'
 const checkboxLine=(label,checked=true)=>{
@@ -744,6 +781,8 @@ const checkboxLine=(label,checked=true)=>{
       };
       drawHeader();
 
+      let siteStreetForFile='';
+
       // --- 1 ---
   header('1. PERUSTIEDOT', SECTION_MIN_SPACE[1]);
       if(!include(1)) checkboxLine('Ei sisälly tarkastukseen'); else {
@@ -759,19 +798,18 @@ const checkboxLine=(label,checked=true)=>{
         const siteCity = el('city')?.value?.trim() || '';
         const siteCityLine = [sitePostal, siteCity].filter(Boolean).join(' ').trim();
         const siteAddress = [siteStreet, siteCityLine].filter(Boolean).join(', ');
+  siteStreetForFile = siteStreet;
         if (siteAddress) labelValue('Osoite:', siteAddress);
         labelValue('Tarkastuksen peruste:', selectText('inspectionBasis'));
         labelValue('Kohteen yksilöinti:', el('locationId')?.value);
         const ownerDetails = formatContactDetails(getContactInfo('owner'));
-        if (ownerDetails.summary) labelValue('Omistaja:', ownerDetails.summary);
-        if (ownerDetails.address) labelValue('Osoite:', ownerDetails.address);
+        if (ownerDetails.length) labelValue('Omistaja:', ownerDetails);
         const clientSameAsOwner = !!el('clientSameOwner')?.checked;
         if (clientSameAsOwner) {
           labelValue('Tilaaja:', 'on sama kuin omistaja');
         } else {
           const clientDetails = formatContactDetails(getContactInfo('client'));
-          if (clientDetails.summary) labelValue('Tilaaja:', clientDetails.summary);
-          if (clientDetails.address) labelValue('Tilaajan osoite:', clientDetails.address);
+          if (clientDetails.length) labelValue('Tilaaja:', clientDetails);
         }
         const contactSameAsOwner = !!el('contactSameOwner')?.checked;
         const contactSameAsClient = !!el('contactSameClient')?.checked;
@@ -781,8 +819,7 @@ const checkboxLine=(label,checked=true)=>{
           labelValue('Tilaajan yhteyshenkilö:', 'on sama kuin tilaaja');
         } else {
           const contactDetails = formatContactDetails(getContactInfo('contact'));
-          if (contactDetails.summary) labelValue('Tilaajan yhteyshenkilö:', contactDetails.summary);
-          if (contactDetails.address) labelValue('Tilaajan yhteyshenkilön osoite:', contactDetails.address);
+          if (contactDetails.length) labelValue('Tilaajan yhteyshenkilö:', contactDetails);
         }
         const imgs = await listImages();
         if (imgs.length) {
@@ -929,7 +966,16 @@ const checkboxLine=(label,checked=true)=>{
       }
 
   applyPageNumbers();
-  doc.save('kayttoonottotarkastus.pdf');
+  const dateToken = dateForFilename(el('s14-date')?.value) || todayStamp();
+  const streetToken = sanitizeAscii(siteStreetForFile);
+  const baseName = [dateToken, streetToken, 'sahkoasennuksen kayttoonottotarkastuspoytakirja', 'KV Asennus']
+    .map((part) => sanitizeAscii(part))
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+/g,' ')
+    .trim();
+  const fileName = baseName || 'kayttoonottotarkastus';
+  doc.save(`${fileName}.pdf`);
     } catch(e){ console.error(e); alert('PDF:n luonti epäonnistui'); } finally { el('loader').style.display='none'; }
   }
 
